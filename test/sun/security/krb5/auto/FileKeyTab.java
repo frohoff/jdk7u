@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,23 +23,33 @@
 
 /*
  * @test
- * @bug 6676075
- * @summary RegistryContext (com.sun.jndi.url.rmi.rmiURLContext) coding problem
- * @library ../../../../../../java/rmi/testlibrary
- * @build TestLibrary
- * @run main ContextWithNullProperties
+ * @bug 7152121
+ * @summary Krb5LoginModule no longer handles keyTabNames with "file:" prefix
+ * @compile -XDignore.symbol.file FileKeyTab.java
+ * @run main/othervm FileKeyTab
  */
 
-import com.sun.jndi.rmi.registry.RegistryContext;
-import java.rmi.registry.Registry;
+import java.io.File;
+import java.io.FileOutputStream;
+import sun.security.jgss.GSSUtil;
 
-public class ContextWithNullProperties {
+// The basic krb5 test skeleton you can copy from
+public class FileKeyTab {
+
     public static void main(String[] args) throws Exception {
-        Registry registry = TestLibrary.createRegistryOnUnusedPort();
-        int registryPort = TestLibrary.getRegistryPort(registry);
-        System.out.println("Connecting to the default Registry...");
-        // Connect to the default Registry.
-        // Pass null as the JNDI environment properties (see final argument)
-        RegistryContext ctx = new RegistryContext(null, registryPort, null);
+        new OneKDC(null).writeJAASConf();
+        String ktab = new File(OneKDC.KTAB).getAbsolutePath().replace('\\', '/');
+        File f = new File(OneKDC.JAAS_CONF);
+        try (FileOutputStream fos = new FileOutputStream(f)) {
+            fos.write((
+                "server {\n" +
+                "    com.sun.security.auth.module.Krb5LoginModule required\n" +
+                "    principal=\"" + OneKDC.SERVER + "\"\n" +
+                "    useKeyTab=true\n" +
+                "    keyTab=\"file:" + ktab + "\"\n" +
+                "    storeKey=true;\n};\n"
+                ).getBytes());
+        }
+        Context.fromJAAS("server");
     }
 }

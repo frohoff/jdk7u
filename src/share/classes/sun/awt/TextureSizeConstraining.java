@@ -1,10 +1,12 @@
 /*
- * Copyright (c) 2001, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.
+ * published by the Free Software Foundation.  Oracle designates this
+ * particular file as subject to the "Classpath" exception as provided
+ * by Oracle in the LICENSE file that accompanied this code.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -21,26 +23,23 @@
  * questions.
  */
 
-/*
- *
+package sun.awt;
+
+/**
+ * A GraphicsConfiguration implements the TextureSizeConstraining
+ * interface to indicate that it imposes certain limitations on the
+ * maximum size of supported textures.
  */
+public interface TextureSizeConstraining {
 
-import java.rmi.Remote;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
+    /**
+     * Returns the maximum width of any texture image.
+     */
+    public int getMaxTextureWidth();
 
-public class SelfTerminator {
+    /**
+     * Returns the maximum height of any texture image.
+     */
+    public int getMaxTextureHeight();
 
-    public static void main(String[] args) {
-        try {
-            int registryPort =
-                Integer.parseInt(System.getProperty("rmi.registry.port"));
-            Registry registry =
-                LocateRegistry.getRegistry("", registryPort);
-            Remote stub = registry.lookup(LeaseCheckInterval.BINDING);
-            Runtime.getRuntime().halt(0);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 }

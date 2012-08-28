@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2012, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,25 +22,28 @@
  */
 
 /*
- *
- */
+  @test
+  @bug 7160609
+  @summary A window with huge dimensions shouldn't crash JVM
+  @author anthony.petrov@oracle.com: area=awt.toplevel
+  @run main HugeFrame
+*/
 
-import java.rmi.Remote;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
+import java.awt.*;
 
-public class SelfTerminator {
+public class HugeFrame {
+    public static void main(String[] args) throws Exception {
+        Frame f = new Frame("Huge");
 
-    public static void main(String[] args) {
-        try {
-            int registryPort =
-                Integer.parseInt(System.getProperty("rmi.registry.port"));
-            Registry registry =
-                LocateRegistry.getRegistry("", registryPort);
-            Remote stub = registry.lookup(LeaseCheckInterval.BINDING);
-            Runtime.getRuntime().halt(0);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // 8193+ should already produce a crash, but let's go extreme...
+        f.setBounds(10, 10, 30000, 500000);
+        f.setVisible(true);
+
+        // We would crash by now if the bug wasn't fixed
+        Thread.sleep(1000);
+        System.err.println(f.getBounds());
+
+        // Cleanup
+        f.dispose();
     }
 }
