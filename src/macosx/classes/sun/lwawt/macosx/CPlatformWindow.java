@@ -299,7 +299,7 @@ public class CPlatformWindow extends CFRetainedResource implements PlatformWindo
 
         // If the target is a dialog, popup or tooltip we want it to ignore the brushed metal look.
         if (isPopup) {
-            styleBits = SET(styleBits, TEXTURED, true);
+            styleBits = SET(styleBits, TEXTURED, false);
             // Popups in applets don't activate applet's process
             styleBits = SET(styleBits, NONACTIVATING, true);
         }
@@ -372,6 +372,8 @@ public class CPlatformWindow extends CFRetainedResource implements PlatformWindo
                 styleBits = SET(styleBits, DRAGGABLE_BACKGROUND, Boolean.parseBoolean(prop.toString()));
             }
         }
+
+        peer.setTextured(IS(TEXTURED, styleBits));
 
         return styleBits;
     }
@@ -670,20 +672,15 @@ public class CPlatformWindow extends CFRetainedResource implements PlatformWindo
 
         // Re-apply the size constraints and the size to ensure the space
         // occupied by the grow box is counted properly
-        setMinimumSize(1, 1); // the method ignores its arguments
+        peer.updateMinimumSize();
 
         Rectangle bounds = peer.getBounds();
         setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
     }
 
     @Override
-    public void setMinimumSize(int width, int height) {
-        //TODO width, height should be used
-        //NOTE: setResizable() calls setMinimumSize(1,1) relaying on the logic below
-        final long nsWindowPtr = getNSWindowPtr();
-        final Dimension min = target.getMinimumSize();
-        final Dimension max = target.getMaximumSize();
-        nativeSetNSWindowMinMax(nsWindowPtr, min.getWidth(), min.getHeight(), max.getWidth(), max.getHeight());
+    public void setSizeConstraints(int minW, int minH, int maxW, int maxH) {
+        nativeSetNSWindowMinMax(getNSWindowPtr(), minW, minH, maxW, maxH);
     }
 
     @Override
@@ -740,10 +737,19 @@ public class CPlatformWindow extends CFRetainedResource implements PlatformWindo
     @Override
     public void setOpaque(boolean isOpaque) {
         CWrapper.NSWindow.setOpaque(getNSWindowPtr(), isOpaque);
-        if (!isOpaque) {
+        if (!isOpaque && !peer.isTextured()) {
             long clearColor = CWrapper.NSColor.clearColor();
             CWrapper.NSWindow.setBackgroundColor(getNSWindowPtr(), clearColor);
         }
+
+        //This is a temporary workaround. Looks like after 7124236 will be fixed
+        //the correct place for invalidateShadow() is CGLayer.drawInCGLContext.
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                invalidateShadow();
+            }
+        });
     }
 
     @Override
@@ -812,6 +818,10 @@ public class CPlatformWindow extends CFRetainedResource implements PlatformWindo
         nativeSetEnabled(getNSWindowPtr(), !blocked);
     }
 
+
+    public final void invalidateShadow(){
+        nativeRevalidateNSWindowShadow(getNSWindowPtr());
+    }
 
     // ----------------------------------------------------------------------
     //                          UTILITY METHODS

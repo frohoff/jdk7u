@@ -196,7 +196,7 @@ public abstract class SunToolkit extends Toolkit
     public abstract RobotPeer createRobot(Robot target, GraphicsDevice screen)
         throws AWTException;
 
-    public abstract KeyboardFocusManagerPeer createKeyboardFocusManagerPeer(KeyboardFocusManager manager)
+    public abstract KeyboardFocusManagerPeer getKeyboardFocusManagerPeer()
         throws HeadlessException;
 
     /**
@@ -505,15 +505,19 @@ public abstract class SunToolkit extends Toolkit
             // Don't call flushPendingEvents() recursively
             if (!isFlushingPendingEvents) {
                 isFlushingPendingEvents = true;
-                AppContext appContext = AppContext.getAppContext();
-                PostEventQueue postEventQueue =
-                    (PostEventQueue)appContext.get(POST_EVENT_QUEUE_KEY);
-                if (postEventQueue != null) {
-                    postEventQueue.flush();
+                try {
+                    AppContext appContext = AppContext.getAppContext();
+                    PostEventQueue postEventQueue =
+                        (PostEventQueue)appContext.get(POST_EVENT_QUEUE_KEY);
+                    if (postEventQueue != null) {
+                        postEventQueue.flush();
+                    }
+                }
+                finally {
+                    isFlushingPendingEvents = false;
                 }
             }
         } finally {
-            isFlushingPendingEvents = false;
             flushLock.unlock();
         }
     }
@@ -1873,6 +1877,13 @@ public abstract class SunToolkit extends Toolkit
     }
 
     /**
+     * Returns true if swing backbuffer should be translucent.
+     */
+    public boolean isSwingBackbufferTranslucencySupported() {
+        return false;
+    }
+
+    /**
      * Returns whether or not a containing top level window for the passed
      * component is
      * {@link GraphicsDevice.WindowTranslucency#PERPIXEL_TRANSLUCENT PERPIXEL_TRANSLUCENT}.
@@ -1993,25 +2004,41 @@ class PostEventQueue {
     private EventQueueItem queueTail = null;
     private final EventQueue eventQueue;
 
+    // For the case when queue is cleared but events are not posted
+    private volatile boolean isFlushing = false;
+
     PostEventQueue(EventQueue eq) {
         eventQueue = eq;
     }
 
     public synchronized boolean noEvents() {
-        return queueHead == null;
+        return queueHead == null && !isFlushing;
     }
 
     /*
      * Continually post pending AWTEvents to the Java EventQueue. The method
      * is synchronized to ensure the flush is completed before a new event
      * can be posted to this queue.
+     *
+     * 7177040: The method couldn't be wholly synchronized because of calls
+     * of EventQueue.postEvent() that uses pushPopLock, otherwise it could
+     * potentially lead to deadlock
      */
-    public synchronized void flush() {
-        EventQueueItem tempQueue = queueHead;
-        queueHead = queueTail = null;
-        while (tempQueue != null) {
-            eventQueue.postEvent(tempQueue.event);
-            tempQueue = tempQueue.next;
+    public void flush() {
+        EventQueueItem tempQueue;
+        synchronized (this) {
+            tempQueue = queueHead;
+            queueHead = queueTail = null;
+            isFlushing = (tempQueue != null);
+        }
+        try {
+            while (tempQueue != null) {
+                eventQueue.postEvent(tempQueue.event);
+                tempQueue = tempQueue.next;
+            }
+        }
+        finally {
+            isFlushing = false;
         }
     }
 
