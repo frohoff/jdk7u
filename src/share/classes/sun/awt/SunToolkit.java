@@ -462,6 +462,19 @@ public abstract class SunToolkit extends Toolkit
         if (event == null) {
             throw new NullPointerException();
         }
+
+        AWTAccessor.SequencedEventAccessor sea = AWTAccessor.getSequencedEventAccessor();
+        if (sea != null && sea.isSequencedEvent(event)) {
+            AWTEvent nested = sea.getNested(event);
+            if (nested.getID() == WindowEvent.WINDOW_LOST_FOCUS &&
+                nested instanceof TimedWindowEvent)
+            {
+                TimedWindowEvent twe = (TimedWindowEvent)nested;
+                ((SunToolkit)Toolkit.getDefaultToolkit()).
+                    setWindowDeactivationTime((Window)twe.getSource(), twe.getWhen());
+            }
+        }
+
         // All events posted via this method are system-generated.
         // Placing the following call here reduces considerably the
         // number of places throughout the toolkit that would
@@ -505,15 +518,19 @@ public abstract class SunToolkit extends Toolkit
             // Don't call flushPendingEvents() recursively
             if (!isFlushingPendingEvents) {
                 isFlushingPendingEvents = true;
-                AppContext appContext = AppContext.getAppContext();
-                PostEventQueue postEventQueue =
-                    (PostEventQueue)appContext.get(POST_EVENT_QUEUE_KEY);
-                if (postEventQueue != null) {
-                    postEventQueue.flush();
+                try {
+                    AppContext appContext = AppContext.getAppContext();
+                    PostEventQueue postEventQueue =
+                        (PostEventQueue)appContext.get(POST_EVENT_QUEUE_KEY);
+                    if (postEventQueue != null) {
+                        postEventQueue.flush();
+                    }
+                }
+                finally {
+                    isFlushingPendingEvents = false;
                 }
             }
         } finally {
-            isFlushingPendingEvents = false;
             flushLock.unlock();
         }
     }
@@ -1853,6 +1870,28 @@ public abstract class SunToolkit extends Toolkit
         return false;
     }
 
+    private static final Object DEACTIVATION_TIMES_MAP_KEY = new Object();
+
+    public synchronized void setWindowDeactivationTime(Window w, long time) {
+        AppContext ctx = getAppContext(w);
+        WeakHashMap<Window, Long> map = (WeakHashMap<Window, Long>)ctx.get(DEACTIVATION_TIMES_MAP_KEY);
+        if (map == null) {
+            map = new WeakHashMap<Window, Long>();
+            ctx.put(DEACTIVATION_TIMES_MAP_KEY, map);
+        }
+        map.put(w, time);
+    }
+
+    public synchronized long getWindowDeactivationTime(Window w) {
+        AppContext ctx = getAppContext(w);
+        WeakHashMap<Window, Long> map = (WeakHashMap<Window, Long>)ctx.get(DEACTIVATION_TIMES_MAP_KEY);
+        if (map == null) {
+            return -1;
+        }
+        Long time = map.get(w);
+        return time == null ? -1 : time;
+    }
+
     // Cosntant alpha
     public boolean isWindowOpacitySupported() {
         return false;
@@ -1993,25 +2032,41 @@ class PostEventQueue {
     private EventQueueItem queueTail = null;
     private final EventQueue eventQueue;
 
+    // For the case when queue is cleared but events are not posted
+    private volatile boolean isFlushing = false;
+
     PostEventQueue(EventQueue eq) {
         eventQueue = eq;
     }
 
     public synchronized boolean noEvents() {
-        return queueHead == null;
+        return queueHead == null && !isFlushing;
     }
 
     /*
      * Continually post pending AWTEvents to the Java EventQueue. The method
      * is synchronized to ensure the flush is completed before a new event
      * can be posted to this queue.
+     *
+     * 7177040: The method couldn't be wholly synchronized because of calls
+     * of EventQueue.postEvent() that uses pushPopLock, otherwise it could
+     * potentially lead to deadlock
      */
-    public synchronized void flush() {
-        EventQueueItem tempQueue = queueHead;
-        queueHead = queueTail = null;
-        while (tempQueue != null) {
-            eventQueue.postEvent(tempQueue.event);
-            tempQueue = tempQueue.next;
+    public void flush() {
+        EventQueueItem tempQueue;
+        synchronized (this) {
+            tempQueue = queueHead;
+            queueHead = queueTail = null;
+            isFlushing = (tempQueue != null);
+        }
+        try {
+            while (tempQueue != null) {
+                eventQueue.postEvent(tempQueue.event);
+                tempQueue = tempQueue.next;
+            }
+        }
+        finally {
+            isFlushing = false;
         }
     }
 
