@@ -1298,20 +1298,24 @@ Java_sun_awt_image_ImagingLib_lookupByteBI(JNIEnv *env, jobject thisLib,
         return 0;
     }
 
-    lut_nbands = (*env)->GetArrayLength(env, jtableArrays);
+    nbands = setImageHints(env, srcImageP, dstImageP, FALSE, TRUE,
+                        FALSE, &hint);
+
+    if (nbands < 1 || nbands > srcImageP->cmodel.numComponents) {
+        /* Can't handle any custom images */
+        awt_freeParsedImage(srcImageP, TRUE);
+        awt_freeParsedImage(dstImageP, TRUE);
+        return 0;
+    }
 
     ncomponents = srcImageP->cmodel.isDefaultCompatCM
         ? 4
         : srcImageP->cmodel.numComponents;
 
-    if (lut_nbands > ncomponents) {
-        lut_nbands = ncomponents;
-    }
-
     /* Make sure that color order can be used for
      * re-ordering of lookup arrays.
      */
-    for (i = 0; i < ncomponents; i++) {
+    for (i = 0; i < nbands; i++) {
         int idx = srcImageP->hints.colorOrder[i];
 
         if (idx < 0 || idx >= ncomponents) {
@@ -1319,6 +1323,12 @@ Java_sun_awt_image_ImagingLib_lookupByteBI(JNIEnv *env, jobject thisLib,
             awt_freeParsedImage(dstImageP, TRUE);
             return 0;
         }
+    }
+
+    lut_nbands = (*env)->GetArrayLength(env, jtableArrays);
+
+    if (lut_nbands > ncomponents) {
+        lut_nbands = ncomponents;
     }
 
     tbl = NULL;
@@ -1361,17 +1371,6 @@ Java_sun_awt_image_ImagingLib_lookupByteBI(JNIEnv *env, jobject thisLib,
             awt_freeParsedImage(dstImageP, TRUE);
             return 0;
         }
-    }
-
-    nbands = setImageHints(env, srcImageP, dstImageP, FALSE, TRUE,
-                        FALSE, &hint);
-    if (nbands < 1) {
-        /* Can't handle any custom images */
-        free(tbl);
-        free(jtable);
-        awt_freeParsedImage(srcImageP, TRUE);
-        awt_freeParsedImage(dstImageP, TRUE);
-        return 0;
     }
 
     /* Allocate the arrays */
